@@ -49,7 +49,7 @@ class AudioRecorder:
                     file_content = f.read()
 
             ollama_output_filename = 'ollama_output.txt'
-
+            prompt="be a good agent! "
             os.system(f"ollama run llama3 {prompt}:{file_content}")
             ollama_output = ""
             if os.path.exists(ollama_output_filename):
