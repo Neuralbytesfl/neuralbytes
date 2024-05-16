@@ -9,7 +9,7 @@ class AudioRecorder:
 
     def init(self):
         while True:
-            prompt = input("PROMPT:> ")
+          
             p = pyaudio.PyAudio()
             stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, frames_per_buffer=1024)
             output_wav_filename = 'output.wav'
@@ -56,8 +56,7 @@ class AudioRecorder:
                 with open(ollama_output_filename, 'r') as ollama_output_file:
                     ollama_output = ollama_output_file.read()
 
-            print("Ollama output:", ollama_output)
-
+            
     
 
 # Usage
