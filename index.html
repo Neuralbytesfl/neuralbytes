@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatGPT</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            padding: 10px; /* Added padding for mobile spacing */
+        }
+        .container {
+            width: 100%; /* Adjust width to be responsive */
+            max-width: 600px; /* Maximum width for larger screens */
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            font-size: 1.2em;
+            text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .chat-container {
+            background-color: #e0e0e0;
+            border-radius: 8px;
+            padding: 10px;
+            height: 300px; /* Increased height for better visibility */
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        .message {
+            background-color: #4caf50;
+            color: white;
+            padding: 8px;
+            border-radius: 8px;
+            margin: 5px 0;
+            width: fit-content;
+            max-width: 90%; /* Adjusted for better text wrapping */
+        }
+        .user-message {
+            background-color: #007bff;
+            margin-left: auto;
+        }
+        .assistant-message {
+            background-color: #28a745;
+        }
+        .input-area {
+            display: flex;
+        }
+        .input-field {
+            flex-grow: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px 0 0 8px;
+            outline: none;
+            width: 100%; /* Ensures input field fills the space */
+        }
+        .send-button {
+            background-color: #4caf50;
+            color: white;
+            padding: 10px;
+            border: none;
+            border-radius: 0 8px 8px 0;
+            cursor: pointer;
+            width: 60px; /* Consistent button width */
+        }
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px; /* Smaller margin on mobile devices */
+                width: calc(100% - 20px); /* Full width with padding */
+            }
+            .header {
+                font-size: 1em; /* Smaller text on mobile */
+            }
+            .chat-container {
+                height: 200px; /* Smaller chat container on mobile */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">Welcome to the AI Chat Assistant</div>
+        <div class="chat-container" id="chat-container">
+            <div class="message assistant-message">Hi there! I'm a friendly AI designed to assist and communicate with you in a helpful way. I can answer questions, provide information, and even have conversations with you. I'm here to make your experience more enjoyable and informative. What would you like to talk about or learn today?</div>
+        </div>
+        <div class="input-area">
+            <input type="text" id="user-input" class="input-field" placeholder="Type your message..." autocomplete="off">
+            <button type="button" class="send-button">Send</button>
+        </div>
+        <div class="footer">Need help? Contact our support at <a href="mailto:neuralbytesfl@gmail.com" class="footer-link">neuralbytesfl@gmail.com</a></div>
+    </div>
+
+    <script>
+        const chatForm = document.querySelector('.input-area');
+        const userInputField = document.getElementById('user-input');
+        const chatContainer = document.getElementById('chat-container');
+        const sendButton = document.querySelector('.send-button');
+
+        sendButton.addEventListener('click', sendMessage);
+        userInputField.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                sendMessage();
+            }
+        });
+
+        function sendMessage() {
+            const userInput = userInputField.value.trim();
+            if (!userInput) return;
+            userInputField.value = '';
+            appendMessage(userInput, 'user-message');
+            fetch('/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: new URLSearchParams({input: userInput})
+            })
+            .then(response => response.json())
+            .then(data => {
+                appendMessage(data.response, 'assistant-message');
+            })
+            .catch(error => console.error('Error:', error));
+        }
+
+        function appendMessage(text, className) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + className;
+            messageDiv.textContent = text;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight; // Autoscroll to the newest message
+        }
+    </script>
+</body>
+</html>
