@@ -1,0 +1,144 @@
+import sys
+import os
+import subprocess
+from openai import OpenAI
+import tkinter as tk
+from tkinter import messagebox, filedialog
+from tkinter.scrolledtext import ScrolledText
+from tkinter import Listbox, Scrollbar
+
+def read_file(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        return file.read()
+
+def write_file(file_path, content):
+    with open(file_path, 'w', encoding='utf-8') as file:
+        file.write(content)
+
+class Application(tk.Frame):
+    def __init__(self, master=None):
+        super().__init__(master)
+        self.master = master
+        self.pack(fill=tk.BOTH, expand=True)
+        self.create_widgets()
+        self.current_file = None
+        self.original_content = ""
+        self.ai_client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
+        self.master.state('zoomed')  # Maximize the window
+
+    def create_widgets(self):
+        self.file_frame = tk.Frame(self)
+        self.file_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.browse_button = tk.Button(self.file_frame, text="Browse Files", command=self.browse_files)
+        self.browse_button.pack(side=tk.TOP, pady=5)
+
+        self.file_listbox = Listbox(self.file_frame, selectmode=tk.SINGLE)
+        self.file_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.file_listbox.bind('<<ListboxSelect>>', self.load_file_content)
+
+        self.scrollbar = Scrollbar(self.file_frame)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.file_listbox.config(yscrollcommand=self.scrollbar.set)
+        self.scrollbar.config(command=self.file_listbox.yview)
+
+        self.text_area_frame = tk.Frame(self)
+        self.text_area_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        self.text_area = ScrolledText(self.text_area_frame, width=80, height=20)
+        self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+
+        self.output_area = ScrolledText(self.text_area_frame, width=80, height=20)
+        self.output_area.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5)
+
+        self.input_entry = tk.Entry(self, width=80)
+        self.input_entry.pack(pady=10)
+
+        self.recommendation_button = tk.Button(self, text="Get Recommendation", command=self.get_recommendation)
+        self.recommendation_button.pack(pady=5)
+
+        self.system_command_button = tk.Button(self, text="Run System Command", command=self.run_system_command)
+        self.system_command_button.pack(pady=5)
+
+        self.save_button = tk.Button(self, text="Save", command=self.save_file)
+        self.save_button.pack(pady=5)
+
+        self.load_project_files()
+
+    def load_project_files(self):
+        project_dir = os.getcwd()
+        for root, dirs, files in os.walk(project_dir):
+            for file in files:
+                self.file_listbox.insert(tk.END, os.path.join(root, file))
+
+    def browse_files(self):
+        file_path = filedialog.askopenfilename()
+        if file_path:
+            self.file_listbox.insert(tk.END, file_path)
+            self.current_file = file_path
+            self.original_content = read_file(file_path)
+            self.text_area.delete('1.0', tk.END)
+            self.text_area.insert('1.0', self.original_content)
+
+    def load_file_content(self, event):
+        selection = event.widget.curselection()
+        if selection:
+            index = selection[0]
+            file_path = event.widget.get(index)
+            self.current_file = file_path
+            self.original_content = read_file(file_path)
+            self.text_area.delete('1.0', tk.END)
+            self.text_area.insert('1.0', self.original_content)
+
+    def get_recommendation(self):
+        user_input = self.input_entry.get()
+        if not self.current_file:
+            messagebox.showerror("Error", "No file selected.")
+            return
+
+        original_content = self.text_area.get('1.0', tk.END)
+        
+        history = [
+            {"role": "system", "content": "You are an intelligent assistant. You always provide well-reasoned answers that are both correct and helpful."},
+            {"role": "user", "content": f"Here is some text:\n\n{original_content}\n\nMake recommendation: {user_input}\n\nreturn recommendation highly detailed and in a nice format"}
+        ]
+
+        completion = self.ai_client.chat.completions.create(
+            model="Orenguteng/Llama-3-8B-Lexi-Uncensored-GGUF",
+            messages=history,
+            temperature=0.7
+        )
+
+        new_content = completion.choices[0].message.content.strip().strip('`').strip()
+        self.output_area.delete('1.0', tk.END)
+        self.output_area.insert('1.0', new_content)
+
+    def run_system_command(self):
+        user_input = self.input_entry.get()
+        if not user_input:
+            messagebox.showerror("Error", "No command entered.")
+            return
+
+        try:
+            result = subprocess.run(user_input, shell=True, capture_output=True, text=True)
+            output = result.stdout + result.stderr
+            self.output_area.delete('1.0', tk.END)
+            self.output_area.insert('1.0', output)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to run command: {e}")
+
+    def save_file(self):
+        if not self.current_file:
+            messagebox.showerror("Error", "No file selected.")
+            return
+
+        if messagebox.askyesno("Confirm Save", "Are you sure you want to save and overwrite the file?"):
+            content = self.text_area.get('1.0', tk.END).strip()
+            write_file(self.current_file, content)
+            messagebox.showinfo("Success", f"File '{self.current_file}' has been updated.")
+
+root = tk.Tk()
+root.title("AI-Powered Code Editor")
+app = Application(master=root)
+app.mainloop()
