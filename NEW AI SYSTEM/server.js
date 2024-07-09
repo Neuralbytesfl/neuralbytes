@@ -2,19 +2,17 @@ const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
 const https = require('https');
-const rateLimit = require('express-rate-limit'); // Import rate-limit middleware
-const sanitizer = require('sanitizer'); // Import the sanitizer module
+const rateLimit = require('express-rate-limit');
+const sanitizer = require('sanitizer');
 
 const app = express();
-const PORT = 443; // Standard HTTPS port
+const PORT = 443;
 
-// Paths to your SSL certificate and key
 const sslOptions = {
     key: fs.readFileSync('certificates/server.key'),
     cert: fs.readFileSync('certificates/server.cert')
 };
 
-// Load API keys from configuration file
 const config = JSON.parse(fs.readFileSync('config/config.json', 'utf-8'));
 const apiKeys = new Set(config.apiKeys);
 
@@ -92,28 +90,28 @@ function isValidApiKey(apiKey) {
 // Middleware to authenticate requests
 function authenticate(req, res, next) {
     const clientIp = req.ip;
-    
+
     if (isIPBlocked(clientIp)) {
         logToFile(`Blocked IP attempt: ${clientIp}`);
-        return res.status(403).send('Forbidden');
+        return res.status(403).send('FUCK YOU! YOU ARE BANNED! THIS MESSAGE BROUGHT YOU BY THE RED DRAGON ^^');
     }
-    
+
     const providedApiKey = req.query.api_key;
     console.log(`Received API key: "${providedApiKey}"`); // Debug log
 
     if (!providedApiKey || !apiKeys.has(providedApiKey) || !isValidApiKey(providedApiKey)) {
         logToFile(`Unauthorized access attempt: ${JSON.stringify(req.query)} from IP: ${clientIp}`);
-        
+
         failedAttempts[clientIp] = (failedAttempts[clientIp] || 0) + 1;
-        
+
         if (failedAttempts[clientIp] >= 3) {
             blockIP(clientIp);
             logToFile(`IP blocked due to multiple failed attempts: ${clientIp}`);
         }
-        
+
         return res.status(401).send('Unauthorized');
     }
-    
+
     next();
 }
 
@@ -144,8 +142,11 @@ const limiter = rateLimit({
 // Apply rate limiting to all requests
 app.use(limiter);
 
+// Apply authentication middleware to all requests
+app.use(authenticate);
+
 // Route to proxy requests to Ollama service
-app.post('/api/chat', authenticate, sanitizeInput, async (req, res) => {
+app.post('/api/chat', sanitizeInput, async (req, res) => {
     const clientIp = req.ip;
     const providedApiKey = req.query.api_key;
     const userMessage = req.body.messages[0].content;
