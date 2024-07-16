@@ -4,9 +4,11 @@ const fs = require('fs');
 const https = require('https');
 const rateLimit = require('express-rate-limit');
 const sanitizer = require('sanitizer');
+const { exec } = require('child_process');
+const cors = require('cors');  // Add CORS module
 
 const app = express();
-const PORT = 443;
+const PORT = 9091;
 
 const sslOptions = {
     key: fs.readFileSync('certificates/server.key'),
@@ -23,21 +25,71 @@ console.log("Loaded API keys:", Array.from(apiKeys));
 let blockedIPs = new Set();
 const blockedIPsFile = 'config/banip.txt';
 
+function isValidIPv4Address(ip) {
+    const ipv4Pattern = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+    return ipv4Pattern.test(ip);
+}
+
 function loadBlockedIPs() {
     if (fs.existsSync(blockedIPsFile)) {
         const data = fs.readFileSync(blockedIPsFile, 'utf-8');
-        blockedIPs = new Set(data.split(',').filter(Boolean));
+        blockedIPs = new Set(data.split(',').map(ip => ip.trim()).filter(isValidIPv4Address));
+        updateFirewallRules();
     }
 }
 
 function saveBlockedIPs() {
     fs.writeFileSync(blockedIPsFile, Array.from(blockedIPs).join(','));
+    updateFirewallRules();
+}
+
+function updateFirewallRules() {
+    blockedIPs.forEach(ip => {
+        const ruleName = `BlockedIP_${ip.replace(/\./g, '_')}`;
+        exec(`netsh advfirewall firewall show rule name="${ruleName}"`, (checkError, checkStdout, checkStderr) => {
+            if (checkError || checkStderr.includes('No rules match')) {
+                // Rule does not exist, create it
+                exec(`netsh advfirewall firewall add rule name="${ruleName}" dir=in action=block remoteip=${ip}`, (addError, addStdout, addStderr) => {
+                    if (addError) {
+                        console.error(`Error creating firewall rule for ${ip}: ${addError.message}`);
+                    }
+                    if (addStderr) {
+                        console.error(`Stderr for ${ip}: ${addStderr}`);
+                    }
+                    console.log(`Firewall rule created for ${ip}: ${addStdout}`);
+                });
+            }
+        });
+    });
+}
+
+function removeFirewallRule(ip) {
+    const ruleName = `BlockedIP_${ip.replace(/\./g, '_')}`;
+    exec(`netsh advfirewall firewall delete rule name="${ruleName}"`, (deleteError, deleteStdout, deleteStderr) => {
+        if (deleteError) {
+            console.error(`Error deleting firewall rule for ${ip}: ${deleteError.message}`);
+        }
+        if (deleteStderr) {
+            console.error(`Stderr for ${ip}: ${deleteStderr}`);
+        }
+        console.log(`Firewall rule deleted for ${ip}: ${deleteStdout}`);
+    });
 }
 
 loadBlockedIPs();
 
-// List of IPs that are exempt from rate limiting
-const exemptIPs = new Set(['127.0.0.1', '10.0.0.79']); // Add the IPs you want to exempt here
+// Load whitelisted IPs from file
+let whitelistedIPs = new Set();
+const whitelistFile = 'config/whitelist.txt';
+
+function loadWhitelistedIPs() {
+    if (fs.existsSync(whitelistFile)) {
+        const data = fs.readFileSync(whitelistFile, 'utf-8');
+        whitelistedIPs = new Set(data.split(',').map(ip => ip.trim()).filter(isValidIPv4Address));
+    }
+}
+
+loadWhitelistedIPs();
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -63,6 +115,7 @@ function unblockIP(ip) {
     if (blockedIPs.has(ip)) {
         blockedIPs.delete(ip);
         saveBlockedIPs();
+        removeFirewallRule(ip);
     }
 }
 
@@ -87,13 +140,26 @@ function isValidApiKey(apiKey) {
     return isValid;
 }
 
+// CORS middleware
+app.use(cors({
+    origin: 'http://83.136.219.5',  // Replace with your front-end domain
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    allowedHeaders: 'Content-Type,Authorization',
+    credentials: true,
+}));
+
 // Middleware to authenticate requests
 function authenticate(req, res, next) {
     const clientIp = req.ip;
 
     if (isIPBlocked(clientIp)) {
         logToFile(`Blocked IP attempt: ${clientIp}`);
-        return res.status(403).send('FUCK YOU! YOU ARE BANNED! THIS MESSAGE BROUGHT YOU BY THE RED DRAGON ^^');
+        return res.status(403).send('FUCK YOU!!! 再见黑客 -- АМЕРИКА НЕ ЛЮБИТ ПУТИНА ');
+    }
+
+    if (whitelistedIPs.has(clientIp)) {
+        console.log(`Whitelisted IP: ${clientIp}`); // Debug log
+        return next();
     }
 
     const providedApiKey = req.query.api_key;
@@ -102,12 +168,8 @@ function authenticate(req, res, next) {
     if (!providedApiKey || !apiKeys.has(providedApiKey) || !isValidApiKey(providedApiKey)) {
         logToFile(`Unauthorized access attempt: ${JSON.stringify(req.query)} from IP: ${clientIp}`);
 
-        failedAttempts[clientIp] = (failedAttempts[clientIp] || 0) + 1;
-
-        if (failedAttempts[clientIp] >= 3) {
-            blockIP(clientIp);
-            logToFile(`IP blocked due to multiple failed attempts: ${clientIp}`);
-        }
+        blockIP(clientIp);
+        logToFile(`IP blocked due to failed attempt: ${clientIp}`);
 
         return res.status(401).send('Unauthorized');
     }
@@ -136,7 +198,7 @@ const limiter = rateLimit({
         logToFile(`Rate limit exceeded: ${clientIp}`);
         res.status(options.statusCode).send(options.message);
     },
-    skip: (req, res) => exemptIPs.has(req.ip) // Skip rate limiting for exempt IPs
+    skip: (req, res) => whitelistedIPs.has(req.ip) // Skip rate limiting for whitelisted IPs
 });
 
 // Apply rate limiting to all requests
@@ -177,7 +239,7 @@ app.post('/api/chat', sanitizeInput, async (req, res) => {
 
         response.data.on('error', (error) => {
             logToFile(`Error during response streaming: ${error.message}`);
-            res.end();
+            res.status(500).send('Internal Server Error');
         });
 
     } catch (error) {
@@ -202,3 +264,12 @@ app.post('/unblock', (req, res) => {
 https.createServer(sslOptions, app).listen(PORT, () => {
     logToFile(`Server running on port ${PORT}`);
 });
+
+// Polyfill for crypto.randomUUID
+if (!crypto.randomUUID) {
+    crypto.randomUUID = function() {
+        return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+            (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+        );
+    };
+}
