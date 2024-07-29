@@ -71,11 +71,13 @@ initial_cash = 1000
 cooldown_period = 45  # Cooldown period in steps
 stop_loss_percentage = 0.05  # Stop-loss at 5% below purchase price
 num_actions = 3  # Number of actions: Buy, Sell, Hold
+maker_fee_percentage = 0.0038  # Maker fee per transaction
+taker_fee_percentage = 0.0057  # Taker fee per transaction
 
 # Step 3: Assign arguments to variables
 num_simulations = args.num # Number of simulations to run
 
-#Model
+# Model
 output_file = 'simulation_results.json'
 q_table_file = 'q_table.pkl'
 
@@ -116,27 +118,32 @@ def perform_action(action, price, portfolio, transaction_log):
         cooldown_counter -= 1
         return reward  # During cooldown period, no action is taken
 
+    fee_percentage = maker_fee_percentage if action == 0 else taker_fee_percentage
+
     if action == 0:  # Buy
         if portfolio['cash'] > 0:
             amount = portfolio['cash'] / price
-            portfolio['cash'] -= amount * price
+            cost = amount * price * (1 + fee_percentage)
+            portfolio['cash'] -= cost
             stop_loss_price = price * (1 - stop_loss_percentage)
             portfolio['investments'].append((price, amount, stop_loss_price))
-            transaction_log.append({'type': 'buy', 'amount': amount, 'price': price, 'total_spent': amount * price, 'reason': 'buy_signal'})
+            transaction_log.append({'type': 'buy', 'amount': amount, 'price': price, 'total_spent': cost, 'reason': 'buy_signal'})
     elif action == 1:  # Sell
         if len(portfolio['investments']) > 0:
             buy_price, invest_amount, stop_loss_price = portfolio['investments'].pop(0)
-            portfolio['cash'] += invest_amount * price
-            transaction_log.append({'type': 'sell', 'amount': invest_amount, 'price': price, 'total_gained': invest_amount * price, 'reason': 'sell_signal'})
+            revenue = invest_amount * price * (1 - fee_percentage)
+            portfolio['cash'] += revenue
+            transaction_log.append({'type': 'sell', 'amount': invest_amount, 'price': price, 'total_gained': revenue, 'reason': 'sell_signal'})
     elif action == 2:  # Hold
         transaction_log.append({'type': 'hold', 'reason': 'hold_signal'})
 
     # Apply stop-loss for each position
     for i, (buy_price, invest_amount, stop_loss_price) in enumerate(portfolio['investments']):
         if price <= stop_loss_price and invest_amount > 0:
-            portfolio['cash'] += invest_amount * price
+            revenue = invest_amount * price * (1 - fee_percentage)
+            portfolio['cash'] += revenue
             portfolio['investments'].pop(i)
-            transaction_log.append({'type': 'sell (stop-loss)', 'amount': invest_amount, 'price': price, 'total_gained': invest_amount * price, 'reason': 'stop_loss'})
+            transaction_log.append({'type': 'sell (stop-loss)', 'amount': invest_amount, 'price': price, 'total_gained': revenue, 'reason': 'stop_loss'})
 
     # Reward calculation
     reward = get_total_portfolio_value(price, portfolio) - initial_cash
