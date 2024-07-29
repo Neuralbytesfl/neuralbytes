@@ -29,6 +29,40 @@ import json
 import os
 import pickle
 import matplotlib.pyplot as plt
+import argparse
+import sys
+
+
+# Step 1: Set up the argument parser
+parser = argparse.ArgumentParser(description="Run stock trading simulations based on user-defined parameters.")
+parser.add_argument('--num', type=int, default=5, help='Number of simulations to run')
+parser.add_argument('--file', type=str, required=True, help='Path to the CSV file containing stock data')
+
+# Step 2: Parse arguments
+args = parser.parse_args()
+
+# Validate and handle the arguments
+try:
+    # Check if the number of simulations is a positive integer
+    if args.num <= 0:
+        raise ValueError("Number of simulations must be a positive integer.")
+
+    # Attempt to open the specified file to ensure it exists
+    with open(args.file, 'r') as file:
+        pass  # If the file opens successfully, we do nothing else here
+
+except FileNotFoundError:
+    print(f"Error: The file '{args.file}' does not exist. Please check the file path and try again.")
+    sys.exit(1)  # Exit the script with an error code
+except ValueError as e:
+    print(f"Error: {e}")
+    sys.exit(1)  # Exit the script with an error code
+except Exception as e:
+    print(f"An unexpected error occurred: {e}")
+    sys.exit(1)  # Exit the script with an error code
+
+
+
 
 # Parameters
 window = 20
@@ -37,7 +71,11 @@ initial_cash = 1000
 cooldown_period = 45  # Cooldown period in steps
 stop_loss_percentage = 0.05  # Stop-loss at 5% below purchase price
 num_actions = 3  # Number of actions: Buy, Sell, Hold
-num_simulations = 2  # Number of simulations to run
+
+# Step 3: Assign arguments to variables
+num_simulations = args.num # Number of simulations to run
+
+#Model
 output_file = 'simulation_results.json'
 q_table_file = 'q_table.pkl'
 
@@ -47,7 +85,7 @@ alpha = 0.1
 gamma = 0.9
 
 # Load historical stock data from CSV file
-csv_file_path = './btc-usd.csv'  # Ensure the CSV file is in the current working directory
+csv_file_path = args.file  # Ensure the CSV file is in the current working directory
 historical_data = pd.read_csv(csv_file_path, parse_dates=['Date'])
 historical_data.set_index('Date', inplace=True)
 
