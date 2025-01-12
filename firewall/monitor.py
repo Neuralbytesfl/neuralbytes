@@ -1,3 +1,4 @@
+#REDUCED DDOS by 99% =)
 import os
 import subprocess
 import time
